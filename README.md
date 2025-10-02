@@ -85,10 +85,11 @@ Place your WireGuard configuration in `volumes/wireguard/wg_confs/`. The contain
 Example client config (`volumes/wireguard/wg_confs/nexus.conf`):
 ```ini
 [Interface]
-Address = 10.0.3.6/24
+Address = 10.0.3.6/24, 2001:db8:1234:5678::fed2/64
 PrivateKey = your_private_key_here
-PostUp = # routing rules for split tunneling
-PreDown = # cleanup routing rules
+# Split tunneling: Allow home network access while routing everything else through VPN
+PostUp = DROUTE=$(ip route | grep default | awk '{print $3}'); HOMENET=192.168.0.0/16; HOMENET2=10.0.0.0/8; HOMENET3=172.16.0.0/12; ip route add $HOMENET3 via $DROUTE; ip route add $HOMENET2 via $DROUTE; ip route add $HOMENET via $DROUTE; iptables -I OUTPUT -d $HOMENET -j ACCEPT; iptables -A OUTPUT -d $HOMENET2 -j ACCEPT; iptables -A OUTPUT -d $HOMENET3 -j ACCEPT;  iptables -A OUTPUT ! -o %i -m mark ! --mark $(wg show %i fwmark) -m addrtype ! --dst-type LOCAL -j REJECT
+PreDown = HOMENET=192.168.0.0/16; HOMENET2=10.0.0.0/8; HOMENET3=172.16.0.0/12; ip route delete $HOMENET; ip route delete $HOMENET2; ip route delete $HOMENET3; iptables -D OUTPUT ! -o %i -m mark ! --mark $(wg show %i fwmark) -m addrtype ! --dst-type LOCAL -j REJECT; iptables -D OUTPUT -d $HOMENET -j ACCEPT; iptables -D OUTPUT -d $HOMENET2 -j ACCEPT; iptables -D OUTPUT -d $HOMENET3 -j ACCEPT
 
 [Peer]
 PublicKey = gateway_server_public_key
@@ -96,6 +97,17 @@ Endpoint = gateway.server.address:51820
 AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 15
 ```
+
+#### Split Tunneling Explanation
+
+The PostUp/PreDown rules implement split tunneling to allow local network access:
+
+- **HOMENET variables**: Define common home network ranges (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+- **Route preservation**: Saves the default gateway and adds routes for home networks
+- **iptables rules**: Allows traffic to home networks while forcing everything else through VPN
+- **Cleanup**: PreDown removes all routes and iptables rules when disconnecting
+
+This allows the server to maintain local network connectivity (for SSH, local services) while routing all Lemmy traffic through the secure WireGuard tunnel.
 
 ### 4. Gateway Server Setup
 
