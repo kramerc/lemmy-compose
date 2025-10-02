@@ -111,15 +111,12 @@ This allows the server to maintain local network connectivity (for SSH, local se
 
 ### 4. Gateway Server Setup
 
-Deploy the `Caddyfile` to your gateway server. The Caddyfile should be configured to reverse proxy to the WireGuard IP of this deployment (`10.0.3.6`).
+Set up the gateway server that will run the reverse proxy and WireGuard server. See **[GATEWAY.md](GATEWAY.md)** for complete gateway server setup instructions including:
 
-Example Caddyfile entry:
-```caddyfile
-your.domain.com {
-    reverse_proxy 10.0.3.6:1234
-    encode gzip
-}
-```
+- WireGuard server configuration
+- Caddy reverse proxy setup with smart routing
+- Firewall and security configuration
+- The `Caddyfile` deployment from this repository
 
 ### 5. Start Services
 
