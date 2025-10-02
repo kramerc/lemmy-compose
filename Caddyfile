@@ -1,0 +1,52 @@
+slevin.horse {
+    encode gzip
+
+    header {
+        -Server
+        Strict-Transport-Security "max-age=31536000; include-subdomains;"
+        X-XSS-Protection "1; mode=block"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer-when-downgrade
+        X-Robots-Tag "none"
+    }
+
+    log {
+        output file /var/log/caddy/slevin.horse/access.log {
+            roll_size 1gb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+    }
+
+    # Path-based matcher → Lemmy backend
+    @lemmy {
+        path /api/* /pictrs/* /feeds/* /nodeinfo/* /.well-known/*
+    }
+
+    # Header-based matcher
+    @lemmy-hdr {
+        header Accept application/*
+    }
+
+    # Method-based matcher
+    @lemmy-post {
+        method POST
+    }
+
+    # Send API, header, and POST traffic to backend
+    handle @lemmy {
+        reverse_proxy 10.0.3.6:8536
+    }
+    handle @lemmy-hdr {
+        reverse_proxy 10.0.3.6:8536
+    }
+    handle @lemmy-post {
+        reverse_proxy 10.0.3.6:8536
+    }
+
+    # Everything else → UI
+    handle {
+        reverse_proxy 10.0.3.6:1234
+    }
+}

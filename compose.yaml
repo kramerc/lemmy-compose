@@ -1,0 +1,70 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "4"
+
+services:
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE #optional
+    environment:
+      - PUID=1451001103
+      - PGID=1451000513
+      - TZ=America/Los_Angeles
+      - LOG_CONFS=true #optional
+    volumes:
+      - ./volumes/wireguard:/config
+      - /lib/modules:/lib/modules #optional
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    restart: always
+
+  lemmy:
+    image: dessalines/lemmy:0.19.13
+    network_mode: service:wireguard
+    restart: always
+    logging: *default-logging
+    environment:
+      - RUST_LOG="warn"
+    volumes:
+      - ./lemmy.hjson:/config/config.hjson:Z
+    depends_on:
+      - pictrs
+
+  lemmy-ui:
+    image: dessalines/lemmy-ui:0.19.13
+    network_mode: service:wireguard
+    env_file: .env.production
+    environment:
+      - LEMMY_UI_LEMMY_INTERNAL_HOST=10.0.3.6:8536
+      - LEMMY_UI_LEMMY_EXTERNAL_HOST=slevin.horse
+      - LEMMY_UI_HTTPS=true
+    volumes:
+      - ./volumes/lemmy-ui/extra_themes:/app/extra_themes
+    depends_on:
+      - lemmy
+    restart: always
+    logging: *default-logging
+
+  pictrs:
+    image: asonix/pictrs:0.5.19
+    # this needs to match the pictrs url in lemmy.hjson
+    hostname: pictrs
+    # we can set options to pictrs like this, here we set max. image size and forced format for conversion
+    # entrypoint: /sbin/tini -- /usr/local/bin/pict-rs -p /mnt -m 4 --image-format webp
+    env_file: .env.production
+    environment:
+      - PICTRS_OPENTELEMETRY_URL=http://otel:4137
+      - RUST_BACKTRACE=full
+      - PICTRS__MEDIA__VIDEO__VIDEO_CODEC=vp9
+      - PICTRS__MEDIA__ANIMATION__MAX_WIDTH=256
+      - PICTRS__MEDIA__ANIMATION__MAX_HEIGHT=256
+      - PICTRS__MEDIA__ANIMATION__MAX_FRAME_COUNT=400
+    user: 991:991
+    volumes:
+      - ./volumes/pictrs:/mnt:Z
+    restart: always
+    logging: *default-logging
