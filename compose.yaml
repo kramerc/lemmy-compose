@@ -16,7 +16,7 @@ services:
       - TZ=America/Los_Angeles
       - LOG_CONFS=true #optional
     volumes:
-      - ./volumes/wireguard:/config
+      - /mnt/lemmy/volumes/wireguard:/config
       - /lib/modules:/lib/modules #optional
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
@@ -43,7 +43,7 @@ services:
       - LEMMY_UI_LEMMY_EXTERNAL_HOST=slevin.horse
       - LEMMY_UI_HTTPS=true
     volumes:
-      - ./volumes/lemmy-ui/extra_themes:/app/extra_themes
+      - /mnt/lemmy/volumes/lemmy-ui/extra_themes:/app/extra_themes
     depends_on:
       - lemmy
     restart: always
@@ -65,6 +65,6 @@ services:
       - PICTRS__MEDIA__ANIMATION__MAX_FRAME_COUNT=400
     user: 991:991
     volumes:
-      - ./volumes/pictrs:/mnt:Z
+      - /mnt/lemmy/volumes/pictrs:/mnt:Z
     restart: always
     logging: *default-logging
