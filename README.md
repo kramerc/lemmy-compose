@@ -1,39 +1,34 @@
 # Lemmy Docker Compose Setup
 
-This repository contains a Docker Compose configuration for running a Lemmy instance with WireGuard networking for secure remote deployment.
+This repository contains a Docker Compose configuration for running a Lemmy instance with nginx as a reverse proxy.
 
 ## Architecture Overview
 
 ```
-[Gateway Server] ←→ [WireGuard Tunnel] ←→ [Remote Server (this deployment)]
-     │                                           │
- Caddyfile                                   Docker Compose
- (Reverse Proxy)                            - Lemmy Backend
-                                           - Lemmy UI  
-                                           - PictRS
-                                           - WireGuard Client
+[External Traffic]
+     │
+     ↓
+[Nginx Reverse Proxy]
+     │
+     ├─→ Lemmy Backend
+     ├─→ Lemmy UI
+     └─→ PictRS
 ```
 
 ### Components
 
+- **Nginx** - Reverse proxy fronting the Lemmy instance
 - **Lemmy Backend** (`dessalines/lemmy:0.19.13`) - Main Lemmy server
 - **Lemmy UI** (`dessalines/lemmy-ui:0.19.13`) - Web interface
 - **PictRS** (`asonix/pictrs:0.5.19`) - Image hosting service
-- **WireGuard** (`lscr.io/linuxserver/wireguard`) - VPN client for secure networking
 
 ## Network Architecture
 
-The deployment uses WireGuard to create a secure tunnel between the remote server and a gateway server:
-
-1. **Gateway Server**: Runs Caddy reverse proxy with the `Caddyfile` configuration
-2. **Remote Server**: Runs this Docker Compose stack connected via WireGuard
-3. **WireGuard Network**: `10.0.3.0/24` subnet with the remote server at `10.0.3.6`
+The deployment uses nginx as a reverse proxy to handle incoming traffic and route it to the appropriate services (Lemmy Backend, Lemmy UI, or PictRS).
 
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- Access to a gateway server for the Caddyfile deployment
-- WireGuard configuration files
 
 ## Setup Instructions
 
@@ -75,50 +70,7 @@ PICTRS__SERVER__API_KEY=your_pictrs_api_key_here
 }
 ```
 
-### 3. Configure WireGuard
-
-Place your WireGuard configuration in `volumes/wireguard/wg_confs/`. The container expects:
-
-- Client configuration files in `volumes/wireguard/wg_confs/`
-- Private/public keys in `volumes/wireguard/`
-
-Example client config (`volumes/wireguard/wg_confs/nexus.conf`):
-```ini
-[Interface]
-Address = 10.0.3.6/24, 2001:db8:1234:5678::fed2/64
-PrivateKey = your_private_key_here
-# Split tunneling: Allow home network access while routing everything else through VPN
-PostUp = DROUTE=$(ip route | grep default | awk '{print $3}'); HOMENET=192.168.0.0/16; HOMENET2=10.0.0.0/8; HOMENET3=172.16.0.0/12; ip route add $HOMENET3 via $DROUTE; ip route add $HOMENET2 via $DROUTE; ip route add $HOMENET via $DROUTE; iptables -I OUTPUT -d $HOMENET -j ACCEPT; iptables -A OUTPUT -d $HOMENET2 -j ACCEPT; iptables -A OUTPUT -d $HOMENET3 -j ACCEPT;  iptables -A OUTPUT ! -o %i -m mark ! --mark $(wg show %i fwmark) -m addrtype ! --dst-type LOCAL -j REJECT
-PreDown = HOMENET=192.168.0.0/16; HOMENET2=10.0.0.0/8; HOMENET3=172.16.0.0/12; ip route delete $HOMENET; ip route delete $HOMENET2; ip route delete $HOMENET3; iptables -D OUTPUT ! -o %i -m mark ! --mark $(wg show %i fwmark) -m addrtype ! --dst-type LOCAL -j REJECT; iptables -D OUTPUT -d $HOMENET -j ACCEPT; iptables -D OUTPUT -d $HOMENET2 -j ACCEPT; iptables -D OUTPUT -d $HOMENET3 -j ACCEPT
-
-[Peer]
-PublicKey = gateway_server_public_key
-Endpoint = gateway.server.address:51820
-AllowedIPs = 0.0.0.0/0, ::/0
-PersistentKeepalive = 15
-```
-
-#### Split Tunneling Explanation
-
-The PostUp/PreDown rules implement split tunneling to allow local network access:
-
-- **HOMENET variables**: Define common home network ranges (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
-- **Route preservation**: Saves the default gateway and adds routes for home networks
-- **iptables rules**: Allows traffic to home networks while forcing everything else through VPN
-- **Cleanup**: PreDown removes all routes and iptables rules when disconnecting
-
-This allows the server to maintain local network connectivity (for SSH, local services) while routing all Lemmy traffic through the secure WireGuard tunnel.
-
-### 4. Gateway Server Setup
-
-Set up the gateway server that will run the reverse proxy and WireGuard server. See **[GATEWAY.md](GATEWAY.md)** for complete gateway server setup instructions including:
-
-- WireGuard server configuration
-- Caddy reverse proxy setup with smart routing
-- Firewall and security configuration
-- The `Caddyfile` deployment from this repository
-
-### 5. Start Services
+### 3. Start Services
 
 ```bash
 # Make scripts executable
@@ -138,39 +90,35 @@ chmod +x init.sh update.sh
 ```
 .
 ├── compose.yaml           # Docker Compose configuration
-├── Caddyfile             # Reverse proxy config (deploy to gateway)
+├── Caddyfile             # Legacy Caddy configuration
 ├── lemmy.hjson           # Lemmy configuration (git-ignored)
 ├── .env.production       # Environment variables (git-ignored)
 ├── nginx_internal.conf   # Internal nginx configuration
+├── nginx.conf            # Nginx reverse proxy configuration
 ├── proxy_params          # Proxy parameters
 ├── init.sh              # Setup script
 ├── update.sh            # Update script
 └── volumes/             # Persistent data (git-ignored)
     ├── lemmy-ui/
-    ├── pictrs/
-    └── wireguard/
+    └── pictrs/
 ```
 
 ## Security Notes
 
 - All sensitive configuration files are git-ignored
 - Credentials are stored in separate files (`.env.production`, `lemmy.hjson`)
-- WireGuard provides encrypted tunnel for all traffic
+- Nginx handles SSL/TLS termination and reverse proxy functionality
 - Services are isolated within Docker containers
 
 ## Networking Details
 
-- **Lemmy Backend**: Accessible via WireGuard at `10.0.3.6:8536`
-- **Lemmy UI**: Accessible via WireGuard at `10.0.3.6:1234`
-- **PictRS**: Internal to Docker network
-- **External Access**: Through gateway server reverse proxy
+- **Nginx**: Exposes port 80/443 for external access
+- **Lemmy Backend**: Internal to Docker network (port 8536)
+- **Lemmy UI**: Internal to Docker network (port 1234)
+- **PictRS**: Internal to Docker network (port 8080)
+- **External Access**: Through nginx reverse proxy
 
 ## Troubleshooting
-
-### Check WireGuard Connection
-```bash
-docker compose exec wireguard wg show
-```
 
 ### View Logs
 ```bash
@@ -197,4 +145,4 @@ Important directories to backup:
 - `volumes/pictrs/` - Image storage
 - `lemmy.hjson` - Configuration
 - `.env.production` - Environment variables
-- `volumes/wireguard/` - WireGuard configuration
+- `nginx.conf` - Nginx configuration
