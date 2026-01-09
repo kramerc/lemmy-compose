@@ -36,7 +36,7 @@ services:
       - LEMMY_UI_LEMMY_EXTERNAL_HOST=slevin.horse
       - LEMMY_UI_HTTPS=true
     volumes:
-      - /mnt/lemmy/volumes/lemmy-ui/extra_themes:/app/extra_themes
+      - ./volumes/lemmy-ui/extra_themes:/app/extra_themes
     depends_on:
       - lemmy
     restart: always
@@ -58,6 +58,6 @@ services:
       - PICTRS__MEDIA__ANIMATION__MAX_FRAME_COUNT=400
     user: 991:991
     volumes:
-      - /mnt/lemmy/volumes/pictrs:/mnt:Z
+      - ./volumes/pictrs:/mnt:Z
     restart: always
     logging: *default-logging
